@@ -1,0 +1,36 @@
+let
+    Source = Excel.CurrentWorkbook(),
+    #"Lignes filtrées" = Table.SelectRows(Source, each ([Name] = "SRC_PGM4")),
+    #"Content développé" = Table.ExpandTableColumn(#"Lignes filtrées", "Content", {" Nom", " Description", " Domaine"}, {" Nom", " Description", " Domaine"}),
+    #"Colonnes supprimées" = Table.RemoveColumns(#"Content développé",{"Name"}),
+    #"Colonnes permutées" = Table.ReorderColumns(#"Colonnes supprimées",{" Domaine", " Nom", " Description"}),
+    #"Requêtes fusionnées" = Table.NestedJoin(#"Colonnes permutées",{" Nom"},SRC_Suivi_Livraison,{"Nom_Projet"},"SRC_Suivi_Livraison",JoinKind.LeftOuter),
+    #"SRC_Suivi_Livraison développé" = Table.ExpandTableColumn(#"Requêtes fusionnées", "SRC_Suivi_Livraison", {"date", "Nom_Lot", "Date de Livraison"}, {"date", "Nom_Lot", "Date de Livraison"}),
+    #"Lignes filtrées1" = Table.SelectRows(#"SRC_Suivi_Livraison développé", each ([Nom_Lot] <> null)),
+    #"Requêtes fusionnées1" = Table.NestedJoin(#"Lignes filtrées1",{"date"},#"Date snapshot Livraison",{"date snapshot"},"Date snapshot Livraison",JoinKind.FullOuter),
+    #"Date snapshot Livraison développé" = Table.ExpandTableColumn(#"Requêtes fusionnées1", "Date snapshot Livraison", {"date snapshot", "Index"}, {"date snapshot", "Index"}),
+    #"Lignes triées" = Table.Sort(#"Date snapshot Livraison développé",{{"Nom_Lot", Order.Ascending}, {"date snapshot", Order.Ascending}}),
+    #"Ajout DateLivr - date par défaut" = Table.AddColumn(#"Lignes triées", "DateLivr", each if [Date de Livraison] = null then Date.From("01/01/2024") else [Date de Livraison]),
+    #"Ajout cle - séquencement des dates" = Table.AddColumn(#"Ajout DateLivr - date par défaut", "cle", each [Nom_Lot] & "_" & Number.ToText([Index])),
+    #"Ajout cle-1 - Clé précédente" = Table.AddColumn(#"Ajout cle - séquencement des dates", "cle-1", each if ([Index] =0) then ""
+else [Nom_Lot] & "_" & Number.ToText([Index]-1)),
+    #"/!\ Filtre Données T1 2024" = Table.SelectRows(#"Ajout cle-1 - Clé précédente", each ([date] <> #date(2024, 1, 2) and [date] <> #date(2024, 2, 6) and [date] <> #date(2024, 9, 24))),
+    #"Requêtes fusionnées2" = Table.NestedJoin(#"/!\ Filtre Données T1 2024",{"cle-1"},#"/!\ Filtre Données T1 2024",{"cle"},"Personnalisée ajoutée2",JoinKind.LeftOuter),
+    #"Personnalisée ajoutée2 développé" = Table.ExpandTableColumn(#"Requêtes fusionnées2", "Personnalisée ajoutée2", {"DateLivr"}, {"Personnalisée ajoutée2.DateLivr"}),
+    #"Ajout Diff - Nb entre date de livraison" = Table.AddColumn(#"Personnalisée ajoutée2 développé", "Diff", each if(Date.From([Personnalisée ajoutée2.DateLivr]) = Date.From("01/01/2024")  or [Personnalisée ajoutée2.DateLivr] = null) then 0
+
+else if
+(Date.From([Personnalisée ajoutée2.DateLivr]) <> Date.From("01/01/2024") and Date.From([DateLivr]) = Date.From("01/01/2024")) then 10
+
+else 
+Number.Round(Number.From(([DateLivr] -[Personnalisée ajoutée2.DateLivr])/( 365.25 / 12 )),0 )),
+    #"Colonnes permutées1" = Table.ReorderColumns(#"Ajout Diff - Nb entre date de livraison",{" Domaine", " Nom", " Description", "date", "Nom_Lot", "Index", "DateLivr", "Personnalisée ajoutée2.DateLivr", "Diff", "Date de Livraison", "date snapshot", "cle", "cle-1"}),
+    #"Colonnes supprimées1" = Table.RemoveColumns(#"Colonnes permutées1",{"Date de Livraison", "date snapshot", "cle", "cle-1"}),
+    #"Ajout DécalageMois - si négatif alors 0" = Table.AddColumn(#"Colonnes supprimées1", "DécalageMois", each if([Diff] >0) then [Diff]
+else 0),
+    #"Colonnes supprimées2" = Table.RemoveColumns(#"Ajout DécalageMois - si négatif alors 0",{"Diff"}),
+    #"Supprimer ligne sans décalage" = Table.SelectRows(#"Colonnes supprimées2", each ([DécalageMois] <> 0)),
+    #"Lignes groupées" = Table.Group(#"Supprimer ligne sans décalage", {" Domaine", " Nom", " Description", "Nom_Lot"}, {{"Nombre Mois", each List.Sum([DécalageMois]), type number}, {"Recurrence", each Table.RowCount(_), type number}}),
+    #"Ajout Variation glissement" = Table.AddColumn(#"Lignes groupées", "Variation glissement", each [Nombre Mois] * [Recurrence])
+in
+    #"Ajout Variation glissement"
