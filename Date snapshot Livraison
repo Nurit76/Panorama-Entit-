@@ -1,0 +1,15 @@
+let
+    Source = Excel.CurrentWorkbook(),
+    #"Lignes filtrées" = Table.SelectRows(Source, each ([Name] = "SCR_Suivi_Livraison")),
+    #"Content développé" = Table.ExpandTableColumn(#"Lignes filtrées", "Content", {"date"}, {"date"}),
+    #"Type modifié" = Table.TransformColumnTypes(#"Content développé",{{"date", type date}}),
+    #"Lignes groupées" = Table.Group(#"Type modifié", {"date"}, {{"Nb", each Table.RowCount(Table.Distinct(_)), type number}}),
+    #"Colonnes renommées" = Table.RenameColumns(#"Lignes groupées",{{"date", "date snapshot"}}),
+    #"Colonnes supprimées" = Table.RemoveColumns(#"Colonnes renommées",{"Nb"}),
+    #"Index ajouté" = Table.AddIndexColumn(#"Colonnes supprimées", "Index", 0, 1),
+    #"Personnalisée ajoutée" = Table.AddColumn(#"Index ajouté", "IdxMois-1", each [Index]-1),
+    #"Personnalisée ajoutée1" = Table.AddColumn(#"Personnalisée ajoutée", "Mois", each if([date snapshot] = Date.From("24/09/2024")) then "10 - Octobre" 
+else 
+Text.PadStart(Number.ToText(Date.Month([date snapshot])),2,"0") & " - " & Text.Proper(Date.MonthName([date snapshot])))
+in
+    #"Personnalisée ajoutée1"
