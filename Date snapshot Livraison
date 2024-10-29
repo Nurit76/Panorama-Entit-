@@ -1,15 +1,29 @@
 let
-    Source = Excel.CurrentWorkbook(),
-    #"Lignes filtrées" = Table.SelectRows(Source, each ([Name] = "SCR_Suivi_Livraison")),
-    #"Content développé" = Table.ExpandTableColumn(#"Lignes filtrées", "Content", {"date"}, {"date"}),
-    #"Type modifié" = Table.TransformColumnTypes(#"Content développé",{{"date", type date}}),
-    #"Lignes groupées" = Table.Group(#"Type modifié", {"date"}, {{"Nb", each Table.RowCount(Table.Distinct(_)), type number}}),
-    #"Colonnes renommées" = Table.RenameColumns(#"Lignes groupées",{{"date", "date snapshot"}}),
-    #"Colonnes supprimées" = Table.RemoveColumns(#"Colonnes renommées",{"Nb"}),
-    #"Index ajouté" = Table.AddIndexColumn(#"Colonnes supprimées", "Index", 0, 1),
-    #"Personnalisée ajoutée" = Table.AddColumn(#"Index ajouté", "IdxMois-1", each [Index]-1),
-    #"Personnalisée ajoutée1" = Table.AddColumn(#"Personnalisée ajoutée", "Mois", each if([date snapshot] = Date.From("24/09/2024")) then "10 - Octobre" 
-else 
-Text.PadStart(Number.ToText(Date.Month([date snapshot])),2,"0") & " - " & Text.Proper(Date.MonthName([date snapshot])))
+    // Source des données
+    Source = Folder.Files("\\matmut.fr\partages\Matmut\PMO Centrale\98 - Dataviz\DVZ_Charge_consolidée\2024_PANOHEB_09\Referentiel\LOT"),
+    
+    // Filtrer les fichiers masqués
+    #"Fichiers masqués filtrés" = Table.SelectRows(Source, each [Attributes]?[Hidden]? <> true),
+    
+    // Transformation du type de la colonne "Date modified"
+    #"Type modifié" = Table.TransformColumnTypes(#"Fichiers masqués filtrés", {{"Date modified", type date}}),
+    
+    // Renommer la colonne "Date modified" en "Date d'extraction"
+    #"Colonnes renommées" = Table.RenameColumns(#"Type modifié", {{"Date modified", "Date d'extraction"}}),
+    
+    // Suppression des autres colonnes inutiles
+    #"Colonnes sélectionnées" = Table.SelectColumns(#"Colonnes renommées", {"Date d'extraction"}),
+    
+    // Ajouter un index
+    #"Index ajouté" = Table.AddIndexColumn(#"Colonnes sélectionnées", "Index", 0, 1),
+    
+    // Création de la colonne "IdxMois-1" en soustrayant 1 de l'index
+    #"Personnalisée ajoutée" = Table.AddColumn(#"Index ajouté", "IdxMois-1", each [Index] - 1),
+    
+    // Création de la colonne "Mois" basée sur "Date d'extraction"
+    #"Personnalisée ajoutée1" = Table.AddColumn(#"Personnalisée ajoutée", "Mois", each if ([#"Date d'extraction"] = Date.From("2024-09-24")) 
+        then "10 - Octobre" 
+        else Text.PadStart(Number.ToText(Date.Month([#"Date d'extraction"])), 2, "0") & " - " & Text.Proper(Date.MonthName([#"Date d'extraction"])))
+
 in
     #"Personnalisée ajoutée1"
